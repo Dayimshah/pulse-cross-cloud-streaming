@@ -1,6 +1,8 @@
 # Pulse — real-time analytics that moves data between two clouds without losing a single record
 
-**Live dashboard:** _(add your Vercel URL here after deploy)_ · **Architecture page:** `/architecture`
+**Live dashboard:** https://pulse-cross-cloud-streaming.vercel.app ·
+**Architecture:** https://pulse-cross-cloud-streaming.vercel.app/architecture ·
+**Repo:** https://github.com/Dayimshah/pulse-cross-cloud-streaming
 
 ---
 
