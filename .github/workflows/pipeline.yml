@@ -1,0 +1,69 @@
+name: Pulse pipeline (scheduled)
+
+# Runs the full cross-cloud pipeline on a schedule, entirely on GitHub's
+# runners — no laptop, no always-on server. Each run:
+#   1. produces a burst of live events into Kafka
+#   2. drains them to AWS (S3 Bronze + DynamoDB ledger, exactly-once)
+#   3. computes analytics on Azure, reconciles vs the AWS ledger, publishes Gold
+# The dashboard (Vercel) reads the freshly published Gold from Cosmos.
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"   # every 15 minutes
+  workflow_dispatch: {}       # allow manual runs from the Actions tab
+
+# Prevent overlapping runs (a new run won't start until the previous finishes).
+concurrency:
+  group: pulse-pipeline
+  cancel-in-progress: false
+
+jobs:
+  run-pipeline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      # --- Kafka (Confluent) ---
+      KAFKA_BOOTSTRAP: ${{ secrets.KAFKA_BOOTSTRAP }}
+      KAFKA_API_KEY: ${{ secrets.KAFKA_API_KEY }}
+      KAFKA_API_SECRET: ${{ secrets.KAFKA_API_SECRET }}
+      KAFKA_TOPIC: transactions
+      # --- AWS ---
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_REGION: ap-south-1
+      S3_BRONZE_BUCKET: ${{ secrets.S3_BRONZE_BUCKET }}
+      DYNAMODB_LEDGER_TABLE: ${{ secrets.DYNAMODB_LEDGER_TABLE }}
+      # --- Azure ---
+      AZURE_STORAGE_ACCOUNT: ${{ secrets.AZURE_STORAGE_ACCOUNT }}
+      AZURE_STORAGE_KEY: ${{ secrets.AZURE_STORAGE_KEY }}
+      COSMOS_ENDPOINT: ${{ secrets.COSMOS_ENDPOINT }}
+      COSMOS_KEY: ${{ secrets.COSMOS_KEY }}
+      COSMOS_DATABASE: analytics
+      COSMOS_CONTAINER: metrics
+      # Bounded runs: consumers exit after a short idle period.
+      IDLE_EXIT_SECONDS: "20"
+      BATCH_MAX_EVENTS: "500"
+      BATCH_MAX_SECONDS: "2"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Produce a burst of live events
+        run: python -m pulse.producer --count 400 --rate 50 --days-back 0
+
+      - name: Drain to AWS (Bronze + ledger, exactly-once)
+        run: python -m pulse.aws_consumer
+
+      - name: Compute analytics on Azure, reconcile, publish Gold
+        # Fresh group id each run so Azure recomputes Gold over the FULL history
+        # (read from earliest) and reconciles against the complete AWS ledger.
+        env:
+          AZURE_GROUP_ID: pulse-azure-${{ github.run_id }}-${{ github.run_attempt }}
+        run: python -m pulse.azure_consumer
