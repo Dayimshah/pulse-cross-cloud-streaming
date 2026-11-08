@@ -14,7 +14,10 @@ export default function Nav() {
       </Link>
       <div className="nav-links">
         <Link href="/" className={`nav-link ${path === "/" ? "active" : ""}`}>
-          overview
+          home
+        </Link>
+        <Link href="/dashboard" className={`nav-link ${path === "/dashboard" ? "active" : ""}`}>
+          dashboard
         </Link>
         <Link
           href="/architecture"

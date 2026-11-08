@@ -1,58 +1,25 @@
 "use client";
+import {
+  KafkaIcon, S3Icon, DynamoIcon, CosmosIcon, LakeIcon, GearIcon, ScreenIcon,
+} from "../components/icons";
 
-function Arrow() {
+/* A real, detailed architecture diagram built with SVG + positioned nodes.
+   Layout: Producer → Kafka → [AWS source cloud] → [Azure analytics cloud] → Dashboard,
+   with Bronze/Silver/Gold labeled and the reconciliation loop drawn as a feedback arrow. */
+
+function Node({ icon, tag, name, svc, sub, accent }) {
   return (
-    <div className="arrow">
-      <svg viewBox="0 0 54 40" preserveAspectRatio="none">
-        <line x1="0" y1="20" x2="46" y2="20" stroke="#2a3344" strokeWidth="2" />
-        <polygon points="46,14 54,20 46,26" fill="#2a3344" />
-        {/* animated signal traveling along the wire */}
-        <circle className="flow-dot" r="3.5" cy="20">
-          <animate attributeName="cx" from="0" to="46" dur="1.8s" repeatCount="indefinite" />
-          <animate attributeName="opacity" values="0;1;1;0" dur="1.8s" repeatCount="indefinite" />
-        </circle>
-      </svg>
+    <div className="dnode" style={{ "--ac": accent }}>
+      <div className="dnode-ico">{icon}</div>
+      <div className="dnode-body">
+        <div className="dnode-tag">{tag}</div>
+        <div className="dnode-name">{name}</div>
+        {svc && <div className="dnode-svc">{svc}</div>}
+        {sub && <div className="dnode-sub">{sub}</div>}
+      </div>
     </div>
   );
 }
-
-const NODES = [
-  {
-    cls: "", tag: "producer", name: "Event Simulator", svc: "GitHub Actions",
-    desc: "Synthetic e-commerce events (view / cart / purchase) with 30-day seasonality. Stands in for live user traffic.",
-  },
-  {
-    cls: "kafka", tag: "transport", name: "Kafka", svc: "Confluent Cloud",
-    desc: "Managed broker, 24/7. Topic 'transactions', 3 partitions. The durable spine that decouples producer from consumers.",
-  },
-  {
-    cls: "aws", tag: "source cloud", name: "Ingest + Ledger", svc: "AWS S3 · DynamoDB",
-    desc: "Raw events land in S3 (Bronze). A DynamoDB ledger records offset ranges + content hashes — the exactly-once brain.",
-  },
-  {
-    cls: "azure", tag: "analytics cloud", name: "Transform + Serve", svc: "Azure ADLS · Cosmos",
-    desc: "Silver (Parquet) + Gold analytics. Reconciles against the AWS ledger, then serves Gold from Cosmos.",
-  },
-];
-
-const DETAILS = [
-  {
-    t: "Exactly-once ingestion", m: "AWS consumer",
-    d: "Save first, commit last: raw events are written to S3 and recorded in the ledger before the Kafka offset is committed. A crash replays uncommitted offsets; the deterministic batch id makes re-processing a no-op. No loss, no duplicates.",
-  },
-  {
-    t: "Cross-cloud reconciliation gate", m: "Azure consumer",
-    d: "Before publishing, Azure compares its independently-computed event count and revenue total against the AWS ledger. If they disagree, Gold is not published — the dashboard is never silently wrong.",
-  },
-  {
-    t: "Medallion layers", m: "Bronze → Silver → Gold",
-    d: "Bronze is raw JSON in S3. Silver is cleaned, typed, columnar Parquet in ADLS Gen2. Gold is pre-aggregated JSON served from Cosmos — the right format for each consumer.",
-  },
-  {
-    t: "Infrastructure as code", m: "Terraform",
-    d: "A single multi-cloud Terraform config provisions S3, DynamoDB, ADLS Gen2, and Cosmos across AWS and Azure. One apply stands up the entire stack, reproducibly.",
-  },
-];
 
 export default function Architecture() {
   return (
@@ -61,38 +28,124 @@ export default function Architecture() {
         <div className="eyebrow">system design</div>
         <h1>Architecture</h1>
         <div className="sub">
-          A live Kafka stream moves from AWS to Azure with an exactly-once, reconciled handoff. Data flows left to right.
+          A live Kafka stream moves from AWS to Azure with an exactly-once, reconciled handoff.
+          Follow the flow left to right; the dotted line is the cross-cloud reconciliation check.
         </div>
       </div>
 
-      <div className="arch-stage">
-        <div className="arch-flow">
-          {NODES.map((n, i) => (
-            <div key={n.name} style={{ display: "contents" }}>
-              <div className={`node ${n.cls}`}>
-                <span className="tag">{n.tag}</span>
-                <span className="name">{n.name}</span>
-                <span className="svc">{n.svc}</span>
-                <span className="desc">{n.desc}</span>
-              </div>
-              {i < NODES.length - 1 && <Arrow />}
-            </div>
-          ))}
+      {/* ============ THE DIAGRAM ============ */}
+      <div className="diagram">
+        {/* cloud boundary labels */}
+        <div className="cloud-bands">
+          <div className="band band-aws"><span>AWS · source cloud</span></div>
+          <div className="band band-azure"><span>AZURE · analytics cloud</span></div>
         </div>
+
+        <div className="diagram-grid">
+          {/* Column 1: producer */}
+          <div className="dcol">
+            <Node
+              icon={<GearIcon size={24} color="#8b93a7" />}
+              tag="producer" name="Event Simulator" svc="GitHub Actions"
+              sub="e-commerce events · 30d seasonality" accent="#8b93a7"
+            />
+          </div>
+
+          <Flow label="produce" />
+
+          {/* Column 2: kafka */}
+          <div className="dcol">
+            <Node
+              icon={<KafkaIcon size={24} />}
+              tag="transport" name="Kafka" svc="Confluent Cloud"
+              sub="topic: transactions · 3 partitions · 24/7" accent="#a970ff"
+            />
+          </div>
+
+          <Flow label="consume" fork />
+
+          {/* Column 3: AWS stack */}
+          <div className="dcol dcol-stack">
+            <Node
+              icon={<S3Icon size={24} />}
+              tag="bronze · raw" name="S3" svc="object storage"
+              sub="raw events, as-is" accent="#ff9900"
+            />
+            <Node
+              icon={<DynamoIcon size={24} />}
+              tag="ledger" name="DynamoDB" svc="offsets + hashes"
+              sub="the exactly-once brain" accent="#ff9900"
+            />
+          </div>
+
+          <Flow label="stream + reconcile" />
+
+          {/* Column 4: Azure stack */}
+          <div className="dcol dcol-stack">
+            <Node
+              icon={<LakeIcon size={24} />}
+              tag="silver · parquet" name="ADLS Gen2" svc="cleaned, typed"
+              sub="columnar lake layer" accent="#3aa0ff"
+            />
+            <Node
+              icon={<CosmosIcon size={24} />}
+              tag="gold · served" name="Cosmos DB" svc="pre-aggregated"
+              sub="funnel · revenue · cohorts" accent="#3aa0ff"
+            />
+          </div>
+
+          <Flow label="serve" />
+
+          {/* Column 5: dashboard */}
+          <div className="dcol">
+            <Node
+              icon={<ScreenIcon size={24} />}
+              tag="serving" name="Dashboard" svc="Next.js · Vercel"
+              sub="live public URL" accent="#35e0c8"
+            />
+          </div>
+        </div>
+
+        {/* reconciliation feedback loop */}
+        <div className="recon-loop">
+          <svg viewBox="0 0 1000 60" preserveAspectRatio="none" width="100%" height="60">
+            <path d="M620 10 C 620 48, 430 48, 430 14" fill="none"
+              stroke="#35e0c8" strokeWidth="1.6" strokeDasharray="5 4" />
+            <polygon points="430,20 425,10 435,10" fill="#35e0c8" />
+            <circle className="flow-dot" r="3" cy="0" cx="0">
+              <animateMotion dur="3s" repeatCount="indefinite"
+                path="M620 10 C 620 48, 430 48, 430 14" />
+            </circle>
+          </svg>
+          <div className="recon-loop-label">
+            reconciliation gate — Azure verifies its totals against the AWS ledger before publishing
+          </div>
+        </div>
+
         <div className="legend">
           <span><i style={{ background: "#a970ff" }} /> Kafka transport</span>
-          <span><i style={{ background: "#ff9900" }} /> AWS — source cloud</span>
-          <span><i style={{ background: "#3aa0ff" }} /> Azure — analytics cloud</span>
-          <span><i style={{ background: "#35e0c8" }} /> live event flow</span>
+          <span><i style={{ background: "#ff9900" }} /> AWS — source</span>
+          <span><i style={{ background: "#3aa0ff" }} /> Azure — analytics</span>
+          <span><i style={{ background: "#35e0c8" }} /> serve / reconcile</span>
         </div>
       </div>
 
-      <div style={{ marginTop: 28 }} className="eyebrow">the hard parts</div>
-      <div className="grid grid-2" style={{ marginTop: 10 }}>
-        {DETAILS.map((d) => (
-          <div className="detail-card" key={d.t}>
-            <h3>{d.t} <span className="mono">— {d.m}</span></h3>
-            <p>{d.d}</p>
+      {/* ============ THE HARD PARTS ============ */}
+      <div style={{ marginTop: 32 }} className="eyebrow">the hard parts</div>
+      <div className="grid grid-2" style={{ marginTop: 12 }}>
+        {[
+          ["Exactly-once ingestion", "AWS consumer",
+            "Save first, commit last: raw events are written to S3 and recorded in the DynamoDB ledger before the Kafka offset is committed. A crash replays uncommitted offsets; a deterministic batch id makes re-processing a no-op. No loss, no duplicates — verified by re-running the consumer and seeing zero duplicates."],
+          ["Cross-cloud reconciliation gate", "Azure consumer",
+            "Before publishing, Azure compares its independently-computed event count and revenue total against the AWS ledger. If they disagree — even by one event or one cent — Gold is not published. The dashboard is never silently wrong."],
+          ["Medallion layers", "Bronze → Silver → Gold",
+            "Bronze is raw JSON in S3. Silver is cleaned, typed, columnar Parquet in ADLS Gen2. Gold is pre-aggregated JSON served from Cosmos — the right format for each consumer."],
+          ["Infrastructure as code", "Terraform",
+            "A single multi-cloud Terraform config provisions S3, DynamoDB, ADLS Gen2, and Cosmos across AWS and Azure. One apply stands up the entire stack, reproducibly."],
+        ].map(([t, m, d]) => (
+          <div className="detail-card" key={t}>
+            <h3>{t} <span className="mono">— {m}</span></h3>
+            <p>{d}</p>
           </div>
         ))}
       </div>
@@ -100,6 +153,32 @@ export default function Architecture() {
       <div className="footer">
         python · confluent kafka · aws s3/dynamodb · azure adls gen2/cosmos · terraform · next.js
       </div>
+    </div>
+  );
+}
+
+function Flow({ label, fork }) {
+  return (
+    <div className="dflow">
+      <svg viewBox="0 0 60 60" preserveAspectRatio="none" width="100%" height="100%">
+        {fork ? (
+          <>
+            <path d="M2 30 H30 M30 30 V14 H58 M30 30 V46 H58" fill="none" stroke="#2a3344" strokeWidth="1.6" />
+            <polygon points="58,10 58,18 64,14" fill="#2a3344" />
+            <polygon points="58,42 58,50 64,46" fill="#2a3344" />
+          </>
+        ) : (
+          <>
+            <line x1="2" y1="30" x2="54" y2="30" stroke="#2a3344" strokeWidth="1.6" />
+            <polygon points="54,25 54,35 62,30" fill="#2a3344" />
+          </>
+        )}
+        <circle className="flow-dot" r="3">
+          <animateMotion dur="1.6s" repeatCount="indefinite"
+            path={fork ? "M2 30 H30 V14 H58" : "M2 30 H58"} />
+        </circle>
+      </svg>
+      {label && <span className="dflow-label">{label}</span>}
     </div>
   );
 }
