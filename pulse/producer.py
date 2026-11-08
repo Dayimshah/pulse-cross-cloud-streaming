@@ -36,13 +36,27 @@ def build_producer() -> Producer:
     return Producer(conf)
 
 
+# Delivery counters: we track what the broker ACTUALLY acknowledged, not just
+# what we queued. A DNS/auth failure must never look like success.
+_delivered = 0
+_failed = 0
+
+
 def _delivery_report(err, msg):
     """Called once per message after the broker acks (or fails) it."""
+    global _delivered, _failed
     if err is not None:
-        print(f"  ! delivery failed: {err}", file=sys.stderr)
+        _failed += 1
+        if _failed <= 3:
+            print(f"  ! delivery failed: {err}", file=sys.stderr)
+    else:
+        _delivered += 1
 
 
 def run(count: int, rate: float, days_back: int = 0):
+    global _delivered, _failed
+    _delivered = 0
+    _failed = 0
     producer = build_producer()
     interval = 1.0 / rate if rate > 0 else 0.0
     sent = 0
@@ -67,8 +81,17 @@ def run(count: int, rate: float, days_back: int = 0):
     except KeyboardInterrupt:
         print("\nInterrupted - flushing...")
     finally:
-        producer.flush(10)                         # ensure everything is delivered
-        print(f"Done. Total sent: {sent}")
+        remaining = producer.flush(15)             # block until delivered (or timeout)
+        print(f"Queued: {sent} | delivered: {_delivered} | failed: {_failed} | "
+              f"undelivered: {remaining}")
+        # Fail loudly if the broker didn't actually acknowledge our events.
+        if _delivered == 0 and sent > 0:
+            print("ERROR: no events were delivered to Kafka (check connection/credentials).",
+                  file=sys.stderr)
+            sys.exit(1)
+        if remaining > 0 or _failed > 0:
+            print(f"WARNING: {remaining + _failed} events not confirmed delivered.",
+                  file=sys.stderr)
 
 
 if __name__ == "__main__":
