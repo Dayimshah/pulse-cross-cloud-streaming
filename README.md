@@ -116,6 +116,50 @@ a few hours in the future and quietly corrupt "today's" numbers. That's the suit
 
 ---
 
+## Challenges & fixes (what actually went wrong)
+
+Nothing here worked first try. These are the real problems hit while building it, and how each
+was diagnosed and fixed — because debugging is most of the job.
+
+**A silent producer that "succeeded" while delivering nothing.**
+The first automated run was all-green, yet zero events moved. The producer logged
+`Total sent: 400` while the Kafka broker received none of them. Two layers: (1) the Kafka
+bootstrap secret, set by piping through PowerShell, picked up a trailing carriage return, so DNS
+on the Linux runner couldn't resolve the host; (2) the producer counted *queued* messages, not
+*delivered* ones — so a total connection failure printed as success. **Fix:** re-set the secrets
+cleanly, and hardened the producer to track broker-acknowledged delivery and exit non-zero if
+nothing is delivered. A failure can never again masquerade as success. *Lesson: "the job is
+green" ≠ "the data moved."*
+
+**Future-dated events — caught by a unit test.**
+A test flagged an event timestamped a few hours in the future. The seasonal-hour logic could pick
+an hour later than the current time for "today," which would corrupt that day's analytics.
+**Fix:** clamp any timestamp past `now` back to just before it. Exactly why the suite asserts
+invariants instead of fixed numbers.
+
+**AWS account blocked by a Service Control Policy.**
+`terraform apply` failed to create S3/DynamoDB with an `explicit deny in a service control policy`
+— even though the IAM user had AdministratorAccess. The account belonged to an AWS Organization
+(the newer restricted free-tier sandbox) whose SCP sits *above* IAM and can't be removed by a
+member account. **Fix:** pointed Terraform at a standalone personal account with no parent org.
+*Lesson: IAM isn't the whole story — org-level SCPs override it.*
+
+**Consumer-group state made re-runs look empty.**
+Re-running the Azure consumer drained 0 events because its consumer group had already committed
+offsets — but reconciliation needs a *full* recompute against the complete AWS ledger. **Fix:**
+made the analytics consumer use a fresh group id per run, so it always reads from the beginning
+and reconciles against the entire history.
+
+**Vercel refused to deploy a vulnerable Next.js version.**
+The build was blocked by a known CVE in the pinned Next.js release. **Fix:** bumped to the
+security-patched version on the same major — no code changes needed.
+
+**Exactly-once, proven not assumed.**
+Rather than trust the design, the AWS consumer was re-run over the same stream: it persisted zero
+duplicates and the ledger count stayed flat — an empirical demonstration of the guarantee.
+
+---
+
 ## Running it yourself
 
 ### Prerequisites
