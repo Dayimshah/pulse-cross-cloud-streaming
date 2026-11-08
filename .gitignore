@@ -1,0 +1,44 @@
+# ---- Secrets & local state (NEVER commit) ----
+*.tfvars
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+crash.log
+
+# Cloud credentials / env files
+.env
+.env.*
+*.pem
+*.key
+
+# ---- Python ----
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+
+# ---- Node / dashboard ----
+node_modules/
+.next/
+dist/
+build/
+
+# ---- OS / editor ----
+.DS_Store
+Thumbs.db
+.vscode/
+
+# ---- dashboard ----
+.env.local
+.env*.local
+.vercel
+dashboard/node_modules/
+dashboard/.next/
+
+# ---- test/debug log captures ----
+aws_out.txt
+aws_err.txt
+*_out.txt
+*_err.txt

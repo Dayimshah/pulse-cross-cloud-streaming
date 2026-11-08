@@ -1,0 +1,8 @@
+# Pulse pipeline dependencies
+confluent-kafka==2.6.0      # official Confluent Kafka client (producer + consumers)
+boto3==1.35.70              # AWS SDK (S3 Bronze + DynamoDB ledger)
+azure-storage-blob==12.24.0 # Azure Blob / ADLS Gen2 (Silver + Gold)
+azure-cosmos==4.9.0         # Cosmos DB (serving layer)
+python-dotenv==1.0.1        # load secrets from .env (never hardcoded)
+pyarrow==18.1.0             # write Silver layer as Parquet (columnar, typed)
+pytest==8.3.4              # test suite (invariant assertions)
